@@ -67,7 +67,7 @@
       var ua = navigator.userAgent || '';
       var isIOS = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
       var isAndroid = /android/i.test(ua);
-      if (!isIOS && !isAndroid) return;
+      var isDesktop = !isIOS && !isAndroid; /* คอมพิวเตอร์: แสดงปุ่มเมื่อ Chrome/Edge พร้อมให้ติดตั้งเท่านั้น */
 
       var $ = function (id) { return document.getElementById(id); };
       var fab = $('pwa-fab'), modal = $('pwa-modal'), stI = $('steps-install'), stS = $('steps-shortcut');
@@ -75,8 +75,24 @@
       function hideFor(d) { try { localStorage.setItem(KEY, String(Date.now() + d * 86400000)); } catch (e) {} }
       function done() { modal.classList.remove('show'); fab.classList.remove('show'); }
 
-      if (!hidden()) fab.classList.add('show');
-      $('pwa-open').addEventListener('click', function () { stI.classList.remove('show'); stS.classList.remove('show'); modal.classList.add('show'); });
+      function installNow() {
+        var p = window.__pwaPrompt;
+        if (!p) return false;
+        p.prompt();
+        p.userChoice.then(function (r) { window.__pwaPrompt = null; if (r && r.outcome === 'accepted') done(); });
+        return true;
+      }
+      if (isDesktop) {
+        var showDesk = function () { if (window.__pwaPrompt && !hidden()) fab.classList.add('show'); };
+        showDesk();
+        document.addEventListener('pwa-ready', showDesk);
+      } else if (!hidden()) {
+        fab.classList.add('show');
+      }
+      $('pwa-open').addEventListener('click', function () {
+        if (isDesktop) { installNow(); return; } /* คอมพิวเตอร์: ขึ้นหน้าต่างติดตั้งของเบราว์เซอร์ทันที */
+        stI.classList.remove('show'); stS.classList.remove('show'); modal.classList.add('show');
+      });
       $('pwa-x').addEventListener('click', function () { hideFor(7); fab.classList.remove('show'); });
       $('pwa-close').addEventListener('click', function () { modal.classList.remove('show'); });
       modal.addEventListener('click', function (e) { if (e.target === modal) modal.classList.remove('show'); });
@@ -84,12 +100,7 @@
       /* ติดตั้งเป็นแอป: Android/Chrome ขึ้นหน้าต่างถามติดตั้งของเครื่องทันที */
       $('opt-install').addEventListener('click', function () {
         stS.classList.remove('show');
-        var p = window.__pwaPrompt;
-        if (p) {
-          p.prompt();
-          p.userChoice.then(function (r) { window.__pwaPrompt = null; if (r && r.outcome === 'accepted') done(); });
-          return;
-        }
+        if (installNow()) return;
         stI.innerHTML = isIOS
           ? '<li>iPhone ติดตั้งอัตโนมัติไม่ได้ ใช้ <b>Safari</b></li><li>แตะปุ่ม <b>แชร์</b> (สี่เหลี่ยมมีลูกศรชี้ขึ้น)</li><li>เลือก <b>"เพิ่มไปยังหน้าจอโฮม"</b> แล้วแตะ <b>"เพิ่ม"</b></li>'
           : '<li>เบราว์เซอร์ยังไม่ส่งหน้าต่างติดตั้งมาให้ ลองทำตามนี้</li><li>เปิดด้วย <b>Chrome</b> แตะเมนู <b>&#8942;</b></li><li>เลือก <b>"ติดตั้งแอป"</b></li>';
