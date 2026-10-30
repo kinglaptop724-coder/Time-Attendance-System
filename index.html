@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>ระบบบันทึกเวลาการปฏิบัติงาน</title>
+  <meta name="theme-color" content="#10b981">
+  <link rel="manifest" href="manifest.json?v=2">
+  <link rel="icon" type="image/png" href="favicon.png?v=2">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png?v=2">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="บันทึกเวลา">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <style>
+    /* หน้านอกไม่เลื่อน (กัน scrollbar ซ้อน 2 อัน) ให้เหลือเฉพาะ scrollbar ของระบบด้านในอันเดียว */
+    html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden}
+    /* iframe เป็น inline โดยปกติ จะมีช่องว่างใต้บรรทัดทำให้หน้าสูงเกินจอ จึงใช้ fixed + block */
+    iframe{position:fixed;top:0;left:0;width:100%;height:100%;height:100dvh;margin:0;padding:0;border:0;display:block}
+    #pwa-fab{display:none;position:fixed;right:14px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:2147483000;align-items:center;gap:4px;background:#10b981;color:#fff;border-radius:30px;padding:4px;box-shadow:0 6px 18px rgba(15,23,42,.3);font-family:'Sarabun','Prompt',sans-serif}
+    #pwa-fab.show{display:inline-flex}
+    #pwa-fab .o{border:0;background:transparent;color:#fff;font:inherit;font-size:14px;font-weight:700;padding:8px 8px 8px 14px;cursor:pointer}
+    #pwa-fab .x{border:0;background:rgba(255,255,255,.25);color:#fff;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:13px;line-height:1}
+    #pwa-modal{display:none;position:fixed;inset:0;z-index:2147483001;background:rgba(15,23,42,.55);align-items:flex-end;justify-content:center;padding:0;font-family:'Sarabun','Prompt',sans-serif}
+    #pwa-modal.show{display:flex}
+    #pwa-modal .c{width:100%;max-width:440px;background:#fff;border-radius:22px 22px 0 0;padding:22px 18px calc(18px + env(safe-area-inset-bottom,0px));color:#1e293b}
+    #pwa-modal h3{margin:0 0 4px;font-size:18px;text-align:center}
+    #pwa-modal .sub{margin:0 0 14px;font-size:13px;color:#64748b;text-align:center}
+    #pwa-modal .opt{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:2px solid #e2e8f0;background:#fff;border-radius:14px;padding:12px 14px;margin-bottom:10px;font:inherit;cursor:pointer;color:#1e293b}
+    #pwa-modal .opt.main{border-color:#10b981;background:#ecfdf5}
+    #pwa-modal .opt .ic{font-size:26px;flex:0 0 auto}
+    #pwa-modal .opt b{display:block;font-size:15px}
+    #pwa-modal .opt span.d{display:block;font-size:12.5px;color:#64748b;margin-top:2px}
+    #pwa-modal .steps{display:none;background:#f8fafc;border-radius:12px;padding:10px 12px 10px 30px;margin:0 0 10px;font-size:13.5px;line-height:1.8}
+    #pwa-modal .steps.show{display:block}
+    #pwa-modal .cancel{display:block;width:100%;border:0;background:transparent;color:#64748b;font:inherit;font-size:14px;padding:8px;cursor:pointer}
+  </style>
+  <!-- ดักเหตุการณ์ติดตั้งไว้ตั้งแต่ต้น กันพลาดกรณีเบราว์เซอร์ส่งสัญญาณก่อนโหลดเสร็จ -->
+  <script>
+    window.__pwaPrompt = null;
+    window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); window.__pwaPrompt = e; document.dispatchEvent(new Event('pwa-ready')); });
+  </script>
+</head>
+<body>
+  <iframe src="https://script.google.com/macros/s/AKfycbxtUD3_ZS08uRhQqEAymwfL44-Xd2gllt97nEoczHM3kgy2ufUL82Z2xDQOAeyqTAOi/exec?src=netlify" allow="clipboard-write; fullscreen"></iframe>
+
+  <div id="pwa-fab"><button class="o" id="pwa-open" type="button">&#128241; ติดตั้งแอป</button><button class="x" id="pwa-x" type="button" aria-label="ซ่อน">&#10005;</button></div>
+
+  <div id="pwa-modal">
+    <div class="c">
+      <h3>เพิ่มลงในมือถือ</h3>
+      <p class="sub">เลือกรูปแบบที่ต้องการ</p>
+      <button type="button" class="opt main" id="opt-install"><span class="ic">&#128242;</span><span><b>ติดตั้งเป็นแอป</b><span class="d">เปิดเต็มจอเหมือนแอปทั่วไป</span></span></button>
+      <ol class="steps" id="steps-install"></ol>
+      <button type="button" class="opt" id="opt-shortcut"><span class="ic">&#128279;</span><span><b>ลงทางลัดบนหน้าจอ</b><span class="d">ไอคอนลัดสำหรับเปิดเว็บ</span></span></button>
+      <ol class="steps" id="steps-shortcut"></ol>
+      <button type="button" class="cancel" id="pwa-close">ยกเลิก</button>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var KEY = 'pwa_install_hidden_until_v3';
+      var standalone = false;
+      try { standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true; } catch (e) {}
+      if (standalone) return;
+      var ua = navigator.userAgent || '';
+      var isIOS = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      var isAndroid = /android/i.test(ua);
+      if (!isIOS && !isAndroid) return;
+
+      var $ = function (id) { return document.getElementById(id); };
+      var fab = $('pwa-fab'), modal = $('pwa-modal'), stI = $('steps-install'), stS = $('steps-shortcut');
+      function hidden() { try { return Date.now() < Number(localStorage.getItem(KEY) || 0); } catch (e) { return false; } }
+      function hideFor(d) { try { localStorage.setItem(KEY, String(Date.now() + d * 86400000)); } catch (e) {} }
+      function done() { modal.classList.remove('show'); fab.classList.remove('show'); }
+
+      if (!hidden()) fab.classList.add('show');
+      $('pwa-open').addEventListener('click', function () { stI.classList.remove('show'); stS.classList.remove('show'); modal.classList.add('show'); });
+      $('pwa-x').addEventListener('click', function () { hideFor(7); fab.classList.remove('show'); });
+      $('pwa-close').addEventListener('click', function () { modal.classList.remove('show'); });
+      modal.addEventListener('click', function (e) { if (e.target === modal) modal.classList.remove('show'); });
+
+      /* ติดตั้งเป็นแอป: Android/Chrome ขึ้นหน้าต่างถามติดตั้งของเครื่องทันที */
+      $('opt-install').addEventListener('click', function () {
+        stS.classList.remove('show');
+        var p = window.__pwaPrompt;
+        if (p) {
+          p.prompt();
+          p.userChoice.then(function (r) { window.__pwaPrompt = null; if (r && r.outcome === 'accepted') done(); });
+          return;
+        }
+        stI.innerHTML = isIOS
+          ? '<li>iPhone ติดตั้งอัตโนมัติไม่ได้ ใช้ <b>Safari</b></li><li>แตะปุ่ม <b>แชร์</b> (สี่เหลี่ยมมีลูกศรชี้ขึ้น)</li><li>เลือก <b>"เพิ่มไปยังหน้าจอโฮม"</b> แล้วแตะ <b>"เพิ่ม"</b></li>'
+          : '<li>เบราว์เซอร์ยังไม่ส่งหน้าต่างติดตั้งมาให้ ลองทำตามนี้</li><li>เปิดด้วย <b>Chrome</b> แตะเมนู <b>&#8942;</b></li><li>เลือก <b>"ติดตั้งแอป"</b></li>';
+        stI.classList.add('show');
+      });
+
+      /* ลงทางลัด: ต้องทำผ่านเมนูของเบราว์เซอร์ (เว็บสั่งสร้างทางลัดเองไม่ได้) */
+      $('opt-shortcut').addEventListener('click', function () {
+        stI.classList.remove('show');
+        stS.innerHTML = isIOS
+          ? '<li>เปิดด้วย <b>Safari</b></li><li>แตะปุ่ม <b>แชร์</b> (สี่เหลี่ยมมีลูกศรชี้ขึ้น)</li><li>เลือก <b>"เพิ่มไปยังหน้าจอโฮม"</b> แล้วแตะ <b>"เพิ่ม"</b></li>'
+          : '<li>เปิดด้วย <b>Chrome</b> แตะเมนู <b>&#8942;</b> มุมขวาบน</li><li>เลือก <b>"เพิ่มลงในหน้าจอหลัก"</b></li><li>ถ้ามีตัวเลือก ให้เลือก <b>"สร้างทางลัด"</b> แล้วแตะ <b>"เพิ่ม"</b></li>';
+        stS.classList.add('show');
+      });
+
+      window.addEventListener('appinstalled', done);
+    })();
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function(){}); });
+    }
+  </script>
+</body>
+</html>
